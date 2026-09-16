@@ -1,0 +1,4 @@
+# package.json "files" already allowlists what ships; this covers the rest.
+demo/
+build.mjs
+.github/
