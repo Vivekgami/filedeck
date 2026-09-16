@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filedeck — demo</title>
+
+<link rel="stylesheet" href="../src/filedeck.css">
+
+<style>
+  /* Page chrome only — none of this is part of Filedeck. */
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 44px 40px 72px;
+    background: #F6F7FB;
+    color: #1C1E33;
+    font: 400 15px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  header { max-width: 900px; margin: 0 auto 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { margin: 0; color: #565A73; }
+  .hint {
+    max-width: 900px; margin: 0 auto 26px; padding: 12px 15px;
+    background: #EEF0F6; border-radius: 10px;
+    font-size: 13.5px; color: #565A73;
+  }
+  .hint code { background: #fff; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+
+  .grid {
+    max-width: 900px; margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 18px;
+  }
+  .tile {
+    display: block; overflow: hidden;
+    border: 1px solid #E2E4F0; border-radius: 12px; background: #fff;
+    text-decoration: none; color: inherit;
+    transition: box-shadow 130ms ease, transform 130ms ease;
+  }
+  .tile:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(28,30,51,.11); }
+  .tile:focus-visible { outline: 2px solid #4D5BE3; outline-offset: 2px; }
+  .tile .shot {
+    height: 128px; background: #EEF0F6;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tile .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .kind {
+    font: 700 13px/1 ui-monospace, SFMono-Regular, monospace;
+    letter-spacing: .1em; color: #fff;
+    padding: 9px 13px; border-radius: 7px;
+  }
+  .k-pdf { background: #DA4A54; } .k-xls { background: #2E9E6B; }
+  .k-doc { background: #4D5BE3; } .k-vid { background: #3E415C; }
+  .k-aud { background: #8A9430; }
+  .tile .m { padding: 11px 13px 13px; }
+  .tile .m b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .m span { font-size: 12.5px; color: #71758C; }
+
+  section { max-width: 900px; margin: 0 auto; }
+  h2 { font-size: 15px; margin: 34px 0 14px; color: #565A73; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Filedeck</h1>
+  <p class="sub">Real files served from <code>assets/</code>. Click any tile.</p>
+</header>
+
+<p class="hint">
+  Every tile below is a plain <code>&lt;a href&gt;</code> with
+  <code>data-filedeck="files"</code> added. With JavaScript disabled they still
+  open the file directly. The last two are deliberate edge cases.
+</p>
+
+<section>
+  <h2>Images — zoom, pan, pinch</h2>
+  <div class="grid">
+
+    <a class="tile" href="assets/hero-landscape.jpg"
+       data-filedeck="files"
+       data-thumb="assets/thumbs/hero-landscape.jpg"
+       data-width="1600" data-height="1000"
+       data-size="48 KB"
+       data-meta="Landscape · uploaded 12 Sep 2026"
+       title="hero-landscape.jpg">
+      <div class="shot"><img src="assets/thumbs/hero-landscape.jpg" alt="Landscape gradient plate"></div>
+      <div class="m"><b>hero-landscape.jpg</b><span>1600 × 1000 · 48 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/drawing-blueprint.png"
+       data-filedeck="files"
+       data-thumb="assets/thumbs/drawing-blueprint.jpg"
+       data-width="1400" data-height="990"
+       data-size="56 KB"
+       data-meta="Assembly drawing · rev C"
+       title="drawing-blueprint.png">
+      <div class="shot"><img src="assets/thumbs/drawing-blueprint.jpg" alt="Blueprint style drawing"></div>
+      <div class="m"><b>drawing-blueprint.png</b><span>1400 × 990 · 56 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/portrait-tall.jpg"
+       data-filedeck="files"
+       data-thumb="assets/thumbs/portrait-tall.jpg"
+       data-width="900" data-height="1400"
+       data-size="33 KB"
+       data-meta="Tall crop — should fit by height"
+       title="portrait-tall.jpg">
+      <div class="shot"><img src="assets/thumbs/portrait-tall.jpg" alt="Tall portrait plate"></div>
+      <div class="m"><b>portrait-tall.jpg</b><span>900 × 1400 · 33 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/panorama-wide.jpg"
+       data-filedeck="files"
+       data-thumb="assets/thumbs/panorama-wide.jpg"
+       data-width="2400" data-height="700"
+       data-size="39 KB"
+       data-meta="Very wide — should fit by width"
+       title="panorama-wide.jpg">
+      <div class="shot"><img src="assets/thumbs/panorama-wide.jpg" alt="Panoramic plate"></div>
+      <div class="m"><b>panorama-wide.jpg</b><span>2400 × 700 · 39 KB</span></div>
+    </a>
+
+    <!-- No data-width/height here on purpose: the aspect settles after load. -->
+    <a class="tile" href="assets/square-swatch.png"
+       data-filedeck="files"
+       data-thumb="assets/thumbs/square-swatch.jpg"
+       data-size="40 KB"
+       data-meta="No dimensions supplied — aspect settles on load"
+       title="square-swatch.png">
+      <div class="shot"><img src="assets/thumbs/square-swatch.jpg" alt="Square swatch"></div>
+      <div class="m"><b>square-swatch.png</b><span>1000 × 1000 · 40 KB</span></div>
+    </a>
+
+  </div>
+
+  <h2>Documents, video and audio</h2>
+  <div class="grid">
+
+    <a class="tile" href="assets/scope-document.pdf"
+       data-filedeck="files"
+       data-size="7 KB · 6 pages"
+       data-meta="Scope sign-off · 9 Sep 2026"
+       title="scope-document.pdf">
+      <div class="shot"><span class="kind k-pdf">PDF</span></div>
+      <div class="m"><b>scope-document.pdf</b><span>6 pages · 7 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/spec-sheet.pdf"
+       data-filedeck="files"
+       data-size="3 KB · 2 pages"
+       data-meta="Technical specification"
+       title="spec-sheet.pdf">
+      <div class="shot"><span class="kind k-pdf">PDF</span></div>
+      <div class="m"><b>spec-sheet.pdf</b><span>2 pages · 3 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/clip-sample.mp4"
+       data-filedeck="files"
+       data-width="960" data-height="540"
+       data-size="72 KB"
+       data-meta="5s clip · H.264"
+       title="clip-sample.mp4">
+      <div class="shot"><span class="kind k-vid">MP4</span></div>
+      <div class="m"><b>clip-sample.mp4</b><span>960 × 540 · 72 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/voice-note.mp3"
+       data-filedeck="files"
+       data-size="71 KB · 0:06"
+       data-meta="Voice note"
+       title="voice-note.mp3">
+      <div class="shot"><span class="kind k-aud">MP3</span></div>
+      <div class="m"><b>voice-note.mp3</b><span>6 seconds · 71 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/bill-of-materials.xlsx"
+       data-filedeck="files"
+       data-size="5 KB"
+       data-meta="No browser renders xlsx — file card"
+       title="bill-of-materials.xlsx">
+      <div class="shot"><span class="kind k-xls">XLS</span></div>
+      <div class="m"><b>bill-of-materials.xlsx</b><span>Spreadsheet · 5 KB</span></div>
+    </a>
+
+    <a class="tile" href="assets/supplier-agreement.docx"
+       data-filedeck="files"
+       data-size="36 KB"
+       data-meta="No browser renders docx — file card"
+       title="supplier-agreement.docx">
+      <div class="shot"><span class="kind k-doc">DOC</span></div>
+      <div class="m"><b>supplier-agreement.docx</b><span>Document · 36 KB</span></div>
+    </a>
+
+  </div>
+
+  <h2>Edge cases</h2>
+  <div class="grid">
+
+    <a class="tile" href="assets/does-not-exist.png"
+       data-filedeck="files"
+       data-size="—"
+       data-meta="Broken URL — should show the fallback card"
+       title="missing-asset.png">
+      <div class="shot"><span class="kind k-vid">404</span></div>
+      <div class="m"><b>missing-asset.png</b><span>should fall back gracefully</span></div>
+    </a>
+
+    <!-- Its own group: opens alone, so arrows, counter and filmstrip all hide. -->
+    <a class="tile" href="assets/hero-landscape.jpg"
+       data-filedeck="single"
+       data-width="1600" data-height="1000"
+       data-size="48 KB"
+       data-meta="Its own group — no arrows, no filmstrip"
+       title="single-item.jpg">
+      <div class="shot"><img src="assets/thumbs/hero-landscape.jpg" alt="Single item"></div>
+      <div class="m"><b>single-item.jpg</b><span>group of one</span></div>
+    </a>
+
+  </div>
+</section>
+
+<script src="../src/filedeck.js"></script>
+<script>
+  window.filedeck = new Filedeck();
+
+  // Gesture thresholds are options, so they can be tuned from here rather than
+  // by editing the library. Swap in this call while testing on a phone:
+  //
+  // window.filedeck = new Filedeck({
+  //   gestures: { swipeRatio: 0.22, flickVelocity: 0.45, dismissDistance: 130 }
+  // });
+
+  document.addEventListener('filedeck:change', function (e) {
+    console.log('viewing', e.detail.index, e.detail.item.name, '·', e.detail.item.kind);
+  });
+  document.addEventListener('filedeck:action:copy', function (e) {
+    console.log('copy', e.detail.copied ? 'ok' : 'failed', e.detail.url);
+  });
+</script>
+
+</body>
+</html>

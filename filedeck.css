@@ -1,0 +1,636 @@
+/* ==========================================================================
+   Filedeck — stylesheet
+
+   Theming: every custom property below carries a literal fallback, so the
+   stylesheet works standalone. Override any subset to restyle, or map them
+   onto an existing design system:
+
+     :root {
+       --fd-accent:       #4D5BE3;   Download button, primary accent
+       --fd-accent-hover: #707CE9;   Focus ring, active filmstrip border
+       --fd-accent-soft:  #C5CBF6;   File-type icon tile
+       --fd-accent-bg:    #E5E8FB;   Audio card icon tile
+       --fd-font:         ui-sans-serif, system-ui, sans-serif;
+       --fd-font-mono:    ui-monospace, SFMono-Regular, monospace;
+       --fd-radius-pill:  999px;
+       --fd-card-bg:      #FFFFFF;   Document / audio card surface
+       --fd-card-text:    #1C1E33;   Card title
+       --fd-card-muted:   #71758C;   Card secondary text
+     }
+
+   Mapping onto your own tokens is a one-liner each:
+     :root { --fd-accent: var(--brand-primary); }
+
+   The dark stage chrome is intentionally fixed rather than theme-aware — an
+   attachment viewer wants a neutral dark surround whatever the page does.
+
+   --fd-z (default 2000) sets the stacking order of the whole viewer.
+   ========================================================================== */
+
+/* -- root ----------------------------------------------------------------
+
+   Scoped reset. Without this the viewer inherits whatever box model the host
+   page happens to use — and .fd-doc and .fd-audio combine width: 100% with
+   horizontal padding, so under content-box they overflow their card and their
+   contents land off centre. Scoped to .fd-root so nothing leaks outward.
+   ---------------------------------------------------------------------- */
+
+.fd-root,
+.fd-root *,
+.fd-root *::before,
+.fd-root *::after { box-sizing: border-box; }
+
+.fd-root {
+  position: fixed;
+  inset: 0;
+  /* Clears Bootstrap's scale, which tops out at 1090 for toasts, with room to
+     spare. Not the maximum integer on purpose — a cookie banner or a session
+     warning may legitimately need to sit above the viewer. */
+  z-index: var(--fd-z, 2000);
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 13, 24, .86);
+  backdrop-filter: blur(14px) saturate(120%);
+  animation: fd-in 170ms ease;
+}
+
+.fd-root[hidden] { display: none; }
+
+body.fd-lock { overflow: hidden; }
+
+@keyframes fd-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* -- top bar ------------------------------------------------------------- */
+
+.fd-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+}
+
+.fd-file { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+
+.fd-file .fic {
+  width: 36px; height: 36px;
+  border-radius: 9px;
+  flex: none;
+  background: rgba(255, 255, 255, .08);
+  color: var(--fd-accent-soft, #C5CBF6);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.fd-file .ft { min-width: 0; }
+
+.fd-file .ft b,
+.fd-file .ft span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fd-file .ft b {
+  font: 600 14.5px/1.3 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: #F2F3FA;
+}
+
+.fd-file .ft span {
+  font: 400 12.5px/1.4 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: rgba(242, 243, 250, .55);
+}
+
+.fd-file .ft span[hidden] { display: none; }
+
+.fd-count {
+  flex: none;
+  font: 500 12.5px/1 var(--fd-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: rgba(242, 243, 250, .6);
+  background: rgba(255, 255, 255, .07);
+  border-radius: var(--fd-radius-pill, 999px);
+  padding: 6px 10px;
+}
+
+.fd-count[hidden] { display: none; }
+
+.fd-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.fd-btn {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: rgba(242, 243, 250, .72);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.fd-btn:hover { background: rgba(255, 255, 255, .11); color: #fff; }
+
+.fd-btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  font: 600 13px/1 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  background: var(--fd-accent, #4D5BE3);
+  color: #fff;
+  white-space: nowrap;
+  transition: background 110ms ease;
+}
+
+.fd-btn-text:hover { background: var(--fd-accent-hover, #707CE9); color: #fff; }
+
+/* -- copy confirmation ---------------------------------------------------
+   A small bubble under the button rather than a toast: it's tied to the
+   control that caused it, and it can't collide with the stage. */
+.fd-btn.is-flashing { position: relative; }
+
+.fd-btn.is-flashing::after {
+  content: attr(data-fd-flash);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font: 600 11.5px/1 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: #fff;
+  background: #2E9E6B;
+  pointer-events: none;
+}
+
+.fd-btn.is-flashing.did-fail::after { background: #DA4A54; }
+
+.fd-sep {
+  width: 1px; height: 20px;
+  background: rgba(255, 255, 255, .14);
+  margin: 0 4px;
+  flex: none;
+}
+
+/* -- stage ---------------------------------------------------------------
+   Fitting is done here, not in JS: the canvas carries the asset's aspect
+   ratio and max-width/max-height do the rest, so a window resize costs
+   nothing and zoom is a transform layered on top.
+   ---------------------------------------------------------------------- */
+
+.fd-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 26px 64px 74px;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Nothing to clear when the zoom cluster is hidden, so the reserved space
+   comes back and the stage centres properly. */
+.fd-stage.no-zoom { padding-bottom: 26px; }
+
+/* Native controls handle their own gestures — scrubbing a video or scrolling
+   a PDF must not be swallowed by the swipe layer. */
+.fd-canvas--pdf,
+.fd-canvas--video,
+.fd-canvas--audio { touch-action: auto; }
+
+/* The figure is only a positioning context — the slide inside it is the
+   column that holds the canvas and caption. */
+.fd-figure {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fd-slide {
+  /* Springback for an abandoned swipe. Remove this rule and a released drag
+     snaps back instantly instead. */
+  transition: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  max-width: 100%;
+  min-height: 0;
+}
+
+.fd-canvas {
+  position: relative;
+  aspect-ratio: var(--fd-ar, 3 / 2);
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  flex: 0 1 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0F1020;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+  transform-origin: center center;
+  transition: transform 120ms ease;
+  will-change: transform;
+}
+
+/* -- loading -------------------------------------------------------------
+   The spinner is delayed, not conditional. A cached image removes the class
+   before the fade-in starts, so it never flashes. */
+.fd-canvas.is-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 28px; height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, .16);
+  border-top-color: var(--fd-accent-hover, #707CE9);
+  animation: fd-spin 700ms linear infinite, fd-fade 160ms ease 220ms both;
+}
+
+@keyframes fd-spin { to { transform: rotate(360deg); } }
+@keyframes fd-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* -- PDF escape hatch ---------------------------------------------------- */
+.fd-pdf-open {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(20, 21, 38, .84);
+  color: #EDEEF7;
+  text-decoration: none;
+  font: 600 12px/1 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  transition: background 110ms ease;
+}
+
+.fd-pdf-open:hover { background: rgba(36, 38, 63, .96); color: #fff; }
+
+.fd-pdf-open:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(12, 13, 24, 1), 0 0 0 4px var(--fd-accent-hover, #707CE9);
+}
+
+.fd-canvas.can-pan { cursor: grab; }
+
+/* No transition while a finger is down: a 120ms ease on every pointermove
+   makes pinch and pan feel like they're lagging behind the touch. */
+.fd-canvas.is-gesturing { transition: none; }
+.fd-canvas.can-pan.is-gesturing { cursor: grabbing; }
+
+.fd-canvas img.fd-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.fd-slide.is-settling {
+  transition: transform 200ms cubic-bezier(.22, .61, .36, 1), opacity 200ms ease;
+}
+
+.fd-cap {
+  font: 400 12.5px/1.4 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: rgba(242, 243, 250, .5);
+  text-align: center;
+  flex: none;
+}
+
+/* -- per-kind canvases --------------------------------------------------- */
+
+/* PDF fills the stage — a page-shaped box wastes the space a reader wants. */
+.fd-canvas--pdf {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+
+.fd-embed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.fd-canvas--video { background: #000; }
+
+.fd-canvas video.fd-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.fd-canvas--audio {
+  aspect-ratio: 520 / 260;
+  width: min(520px, 100%);
+}
+
+.fd-audio {
+  width: 100%; height: 100%;
+  background: var(--fd-card-bg, #FFFFFF);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 28px;
+  text-align: center;
+  color: var(--fd-card-muted, #71758C);
+}
+
+.fd-audio .dg {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: var(--fd-accent-bg, #E5E8FB);
+  color: var(--fd-accent, #4D5BE3);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.fd-audio b {
+  font: 600 15px/1.35 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: var(--fd-card-text, #1C1E33);
+  word-break: break-word;
+}
+
+.fd-audio span { font: 400 13px/1.5 var(--fd-font, ui-sans-serif, system-ui, sans-serif); }
+.fd-audio audio { width: 100%; margin-top: 4px; }
+
+/* Non-image attachments, and the fallback when a file can't be rendered. */
+.fd-canvas--file,
+.fd-canvas.is-error { aspect-ratio: 460 / 560; width: min(460px, 100%); }
+
+.fd-doc {
+  width: 100%; height: 100%;
+  background: var(--fd-card-bg, #FFFFFF);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 24px;
+  text-align: center;
+  color: var(--fd-card-muted, #71758C);
+}
+
+.fd-doc .dg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 4px 10px rgba(28, 30, 51, .14));
+}
+
+.fd-doc b {
+  font: 600 18px/1.3 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: var(--fd-card-text, #1C1E33);
+  word-break: break-word;
+}
+
+.fd-doc span { font: 400 13px/1.5 var(--fd-font, ui-sans-serif, system-ui, sans-serif); }
+
+.fd-doc-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  text-decoration: none;
+  font: 600 13px/1 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  background: var(--fd-accent, #4D5BE3);
+  color: #fff;
+  transition: background 110ms ease;
+}
+
+.fd-doc-dl:hover { background: var(--fd-accent-hover, #707CE9); color: #fff; }
+
+.fd-doc-dl:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--fd-accent-hover, #707CE9);
+}
+
+/* -- nav arrows ---------------------------------------------------------- */
+
+/* Without an explicit z-index these fall back to DOM order, which puts the
+   prev button behind the figure and the next button in front of it. */
+.fd-nav {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(20, 21, 38, .72);
+  color: #EDEEF7;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.fd-nav:hover { background: rgba(36, 38, 63, .95); }
+.fd-nav.prev { left: 14px; }
+.fd-nav.next { right: 14px; }
+.fd-nav[disabled] { opacity: .3; cursor: default; }
+.fd-nav[hidden] { display: none; }
+
+/* -- zoom cluster -------------------------------------------------------- */
+
+.fd-zoom {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--fd-radius-pill, 999px);
+  background: rgba(20, 21, 38, .8);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+
+.fd-zoom button {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(242, 243, 250, .8);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.fd-zoom button:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.fd-zoom button[disabled] { opacity: .35; cursor: default; }
+.fd-zoom button[disabled]:hover { background: transparent; color: rgba(242, 243, 250, .8); }
+
+.fd-zoom[hidden] { display: none; }
+
+.fd-zoom .val {
+  font: 500 12px/1 var(--fd-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: rgba(242, 243, 250, .75);
+  min-width: 44px;
+  text-align: center;
+}
+
+/* -- filmstrip ----------------------------------------------------------- */
+
+.fd-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+  overflow-x: auto;
+}
+
+.fd-strip[hidden] { display: none; }
+
+.fd-thumb {
+  position: relative;
+  flex: none;
+  width: 76px; height: 54px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, .06);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(242, 243, 250, .5);
+  padding: 0;
+  opacity: .62;
+  transition: border-color 120ms ease, opacity 120ms ease;
+}
+
+.fd-thumb:hover { opacity: 1; }
+.fd-thumb.on { border-color: var(--fd-accent-hover, #707CE9); opacity: 1; }
+
+.fd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fd-thumb .fd-ficon { display: block; filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .35)); }
+
+.fd-thumb .tl {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  font: 600 9.5px/1 var(--fd-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: rgba(255, 255, 255, .85);
+  background: linear-gradient(transparent, rgba(0, 0, 0, .7));
+  padding: 8px 4px 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -- focus --------------------------------------------------------------- */
+
+.fd-btn:focus-visible,
+.fd-btn-text:focus-visible,
+.fd-nav:focus-visible,
+.fd-thumb:focus-visible,
+.fd-zoom button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(12, 13, 24, 1), 0 0 0 4px var(--fd-accent-hover, #707CE9);
+}
+
+/* -- screen-reader position announcements -------------------------------- */
+
+.fd-live {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* -- narrow screens ------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  .fd-stage { padding: 16px 16px 68px; }
+  .fd-stage.no-zoom { padding-bottom: 16px; }
+  .fd-nav { width: 36px; height: 36px; }
+  .fd-nav.prev { left: 6px; }
+  .fd-nav.next { right: 6px; }
+  .fd-top { padding: 10px 12px; gap: 10px; }
+  .fd-btn-text { padding: 0 11px; }
+  .fd-strip { padding: 10px 12px; }
+}
+
+/* Below this the filename is what matters; the chrome gives up space for it,
+   widest-and-least-useful first. */
+@media (max-width: 680px) {
+  .fd-top { gap: 8px; }
+
+  /* Download collapses to its icon. The label stays in the accessible name
+     via aria-label, so this is visual only. */
+  .fd-btn-text {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  .fd-btn-label { display: none; }
+
+  .fd-file .fic { width: 32px; height: 32px; border-radius: 8px; }
+  .fd-file .ft b { font-size: 13.5px; }
+  .fd-file .ft span { font-size: 11.5px; }
+  .fd-acts { gap: 2px; }
+  .fd-btn { width: 32px; height: 32px; }
+  .fd-sep { margin: 0 2px; }
+}
+
+@media (max-width: 480px) {
+  /* The subtitle is the first thing to go — it's metadata, the name is not. */
+  .fd-file .ft span { display: none; }
+  .fd-count { padding: 5px 8px; font-size: 11.5px; }
+}
+
+@media (max-width: 380px) {
+  /* The filmstrip already shows position, so the counter is redundant here,
+     and the type icon repeats what the extension in the name already says. */
+  .fd-count { display: none; }
+  .fd-file .fic { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-root { animation: none !important; }
+  .fd-canvas { transition: none; }
+  .fd-slide.is-settling { transition: none; }
+  /* Keep the indicator, drop the rotation. */
+  .fd-canvas.is-loading::after { animation: fd-fade 1ms ease 220ms both; }
+}

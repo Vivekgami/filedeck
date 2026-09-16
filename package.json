@@ -1,0 +1,62 @@
+{
+  "name": "filedeck",
+  "version": "0.1.0",
+  "description": "A dependency-free attachment viewer for images, PDFs, video, audio and documents. Driven by DOM attributes, no build step required.",
+  "keywords": [
+    "lightbox",
+    "attachment",
+    "viewer",
+    "gallery",
+    "pdf",
+    "file-preview",
+    "vanilla-js",
+    "no-dependencies"
+  ],
+  "license": "MIT",
+  "author": "Vivek V Gami",
+  "homepage": "https://github.com/Vivekgami/filedeck#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vivekgami/filedeck.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Vivekgami/filedeck/issues"
+  },
+  "type": "module",
+  "main": "./dist/filedeck.umd.js",
+  "module": "./dist/filedeck.esm.js",
+  "unpkg": "./dist/filedeck.umd.min.js",
+  "jsdelivr": "./dist/filedeck.umd.min.js",
+  "exports": {
+    ".": {
+      "import": "./dist/filedeck.esm.js",
+      "require": "./dist/filedeck.umd.js",
+      "default": "./dist/filedeck.umd.js"
+    },
+    "./filedeck.css": "./dist/filedeck.css",
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "*.css",
+    "./dist/filedeck.umd.js",
+    "./dist/filedeck.umd.min.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build",
+    "demo": "python3 -m http.server 8000 --bind 0.0.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
