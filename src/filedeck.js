@@ -4,8 +4,8 @@
 
    Reads everything from the DOM. Include the CSS, include this file, done:
 
-     <script src="/static/js/filedeck.js"></script>
-     <script>window.filedeck = new Filedeck();</script>
+     <script src="/static/js/filedeck.js"><\/script>
+     <script>window.filedeck = new Filedeck();<\/script>
 
    Markup it looks for:
 
@@ -51,7 +51,15 @@ window.Filedeck = (function () {
     imageFailed: 'Image didn\u2019t load',
     videoFailed: 'This video can\u2019t be played here',
     audioFailed: 'This audio can\u2019t be played here',
-    noPreview: 'Preview isn\u2019t available for this file type'
+    noPreview: 'Preview isn\u2019t available for this file type',
+    previewFailed: 'This file couldn\u2019t be read',
+    previewTooBig: 'Too large to preview here',
+    previewUnsupported: 'Your browser can\u2019t preview this file type',
+    sheetEmpty: 'This sheet is empty',
+    sheetTruncated: 'Showing the first {rows} rows and {columns} columns.',
+    docEmpty: 'This document has no readable text',
+    docTruncated: 'Showing the first {blocks} blocks of this document.',
+    previewNeedsHttp: 'Previews need the page served over http, not opened as a file'
   };
 
   var GESTURE_DEFAULTS = {
@@ -159,7 +167,9 @@ window.Filedeck = (function () {
     image: 'jpg jpeg png gif webp avif svg bmp ico',
     pdf:   'pdf',
     video: 'mp4 webm ogv mov m4v',
-    audio: 'mp3 wav ogg oga m4a aac flac'
+    audio: 'mp3 wav ogg oga m4a aac flac',
+    sheet: 'xlsx xlsm',
+    doc:   'docx docm'
   };
 
   var KIND_BY_EXT = (function () {
@@ -177,10 +187,14 @@ window.Filedeck = (function () {
     pdf:   { zoom: false, preload: false },
     video: { zoom: false, preload: false },
     audio: { zoom: false, preload: false },
+    sheet: { zoom: false, preload: false },
+    doc:   { zoom: false, preload: false },
     file:  { zoom: false, preload: false }
   };
 
-  var KIND_ALIASES = { doc: 'file', document: 'file' };
+  // 'doc' is now a real kind (Word). The old alias stays for anyone who wrote
+  // data-kind="doc" to mean "just show the card".
+  var KIND_ALIASES = { document: 'file', card: 'file' };
 
   function extOf(nameOrUrl) {
     var name = basename(nameOrUrl).split('?')[0];
@@ -188,14 +202,47 @@ window.Filedeck = (function () {
     return dot > -1 ? name.slice(dot + 1).toLowerCase() : '';
   }
 
-  function kindFor(url, override, name) {
-    if (override) return KIND_ALIASES[override] || (CAPS[override] ? override : 'file');
-    return KIND_BY_EXT[extOf(name)] || KIND_BY_EXT[extOf(url)] || 'file';
+  /* A custom renderer registered for an extension promotes that extension to
+     a kind of its own, so `renderers: { docx: … }` is enough to make .docx
+     stop resolving to the generic file card. */
+  function kindFor(url, override, name, renderers) {
+    if (override) {
+      if (renderers && renderers[override]) return override;
+      return KIND_ALIASES[override] || (CAPS[override] ? override : 'file');
+    }
+    // The URL decides the kind, because the URL is what goes on the stage —
+    // a converted PDF preview behind a .docx filename must render as a PDF.
+    // The name is the fallback, for URLs with no extension at all.
+    var ext = extOf(url) || extOf(name);
+    if (renderers && renderers[ext]) return ext;
+    return KIND_BY_EXT[ext] || 'file';
   }
 
-  function capsFor(kind) { return CAPS[kind] || CAPS.file; }
+  function capsFor(kind, renderers) {
+    var custom = renderers && renderers[kind];
+    if (custom) {
+      return {
+        zoom: custom.zoom === true,
+        preload: custom.preload === true
+      };
+    }
+    return CAPS[kind] || CAPS.file;
+  }
 
-  var TOP_ICON = { image: 'img', pdf: 'doc', video: 'img', audio: 'audio', file: 'doc' };
+  /* A renderer may be a bare function or an object carrying its capabilities:
+       renderers: { docx: fn }
+       renderers: { docx: { render: fn, fill: true, zoom: false } }         */
+  function normaliseRenderers(map) {
+    var out = {};
+    if (!map) return out;
+    Object.keys(map).forEach(function (key) {
+      var entry = map[key];
+      out[key.toLowerCase()] = typeof entry === 'function' ? { render: entry } : entry;
+    });
+    return out;
+  }
+
+  var TOP_ICON = { image: 'img', pdf: 'doc', video: 'img', audio: 'audio', sheet: 'doc', doc: 'doc', file: 'doc' };
 
   /* -- file-type icons ----------------------------------------------------
      A page shape with a coloured type label rather than vendor logos. The
@@ -263,6 +310,598 @@ window.Filedeck = (function () {
     return window.matchMedia('(min-width: 901px)').matches;
   }
 
+  /* -- zip reading --------------------------------------------------------
+     .xlsx and .docx are zip archives of XML. The browser can already open
+     both — DecompressionStream for the archive, DOMParser for the XML — so
+     reading them needs no library, only the plumbing between the two.
+
+     Entries are located up front but inflated on demand: a workbook holds a
+     part per sheet, and a preview only ever reads one of them.
+     -------------------------------------------------------------------- */
+
+  var ZIP_EOCD = 0x06054b50;
+  var ZIP_CD = 0x02014b50;
+  var ZIP_LOCAL = 0x04034b50;
+  var ZIP_MAX_BYTES = 20 * 1024 * 1024;
+
+  function zipOpen(buffer) {
+    var view = new DataView(buffer);
+    var bytes = new Uint8Array(buffer);
+
+    // The end-of-central-directory record sits at the tail, after a comment of
+    // unknown length, so it has to be scanned for backwards.
+    var end = -1;
+    var limit = Math.max(0, bytes.length - 0xffff - 22);
+    for (var i = bytes.length - 22; i >= limit; i--) {
+      if (view.getUint32(i, true) === ZIP_EOCD) { end = i; break; }
+    }
+    if (end < 0) throw new Error('not-a-zip');
+
+    var count = view.getUint16(end + 10, true);
+    var start = view.getUint32(end + 16, true);
+    if (start === 0xffffffff) throw new Error('zip64');
+
+    var entries = {};
+    var at = start;
+
+    for (var n = 0; n < count; n++) {
+      if (view.getUint32(at, true) !== ZIP_CD) break;
+
+      var method = view.getUint16(at + 10, true);
+      var compressed = view.getUint32(at + 20, true);
+      var size = view.getUint32(at + 24, true);
+      var nameLen = view.getUint16(at + 28, true);
+      var extraLen = view.getUint16(at + 30, true);
+      var commentLen = view.getUint16(at + 32, true);
+      var offset = view.getUint32(at + 42, true);
+      var name = utf8(bytes.subarray(at + 46, at + 46 + nameLen));
+
+      entries[name] = { method: method, compressed: compressed, size: size, offset: offset };
+      at += 46 + nameLen + extraLen + commentLen;
+    }
+
+    return { view: view, bytes: bytes, entries: entries };
+  }
+
+  function utf8(bytes) {
+    if (window.TextDecoder) return new window.TextDecoder('utf-8').decode(bytes);
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return decodeURIComponent(escape(out));
+  }
+
+  function zipHas(zip, name) { return !!zip.entries[name]; }
+
+  function zipBytes(zip, name) {
+    var entry = zip.entries[name];
+    if (!entry) return Promise.reject(new Error('missing:' + name));
+
+    // The central directory's name and extra lengths can differ from the local
+    // header's, so the data offset must come from the local header.
+    if (zip.view.getUint32(entry.offset, true) !== ZIP_LOCAL) {
+      return Promise.reject(new Error('bad-entry'));
+    }
+    var nameLen = zip.view.getUint16(entry.offset + 26, true);
+    var extraLen = zip.view.getUint16(entry.offset + 28, true);
+    var from = entry.offset + 30 + nameLen + extraLen;
+    var raw = zip.bytes.subarray(from, from + entry.compressed);
+
+    if (entry.method === 0) return Promise.resolve(raw);          // stored
+    if (entry.method !== 8) return Promise.reject(new Error('method:' + entry.method));
+
+    if (!window.DecompressionStream) return Promise.reject(new Error('no-inflate'));
+
+    var stream = new window.Response(raw).body
+      .pipeThrough(new window.DecompressionStream('deflate-raw'));
+    return new window.Response(stream).arrayBuffer().then(function (out) {
+      return new Uint8Array(out);
+    });
+  }
+
+  function zipXml(zip, name) {
+    return zipBytes(zip, name).then(function (bytes) {
+      var doc = new window.DOMParser().parseFromString(utf8(bytes), 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('bad-xml');
+      return doc;
+    });
+  }
+
+  /* Namespace prefixes vary between producers, so elements and attributes are
+     matched on local name rather than the qualified one. */
+  function tags(scope, name) {
+    var all = scope.getElementsByTagName('*');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].localName === name) out.push(all[i]);
+    }
+    return out;
+  }
+
+  function attr(node, name) {
+    var list = node.attributes;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].localName === name) return list[i].value;
+    }
+    return null;
+  }
+
+  /* -- spreadsheet reading ------------------------------------------------ */
+
+  var SHEET_MAX_ROWS = 2000;
+  var SHEET_MAX_COLS = 64;
+
+  // Built-in number-format ids that mean "this is a date".
+  var DATE_FORMATS = {
+    14:1, 15:1, 16:1, 17:1, 18:1, 19:1, 20:1, 21:1, 22:1,
+    45:1, 46:1, 47:1, 27:1, 30:1, 36:1, 50:1, 57:1
+  };
+
+  function columnIndex(ref) {
+    var n = 0;
+    for (var i = 0; i < ref.length; i++) {
+      var c = ref.charCodeAt(i);
+      if (c < 65 || c > 90) break;
+      n = n * 26 + (c - 64);
+    }
+    return n - 1;
+  }
+
+  function columnName(index) {
+    var name = '';
+    index += 1;
+    while (index > 0) {
+      var rem = (index - 1) % 26;
+      name = String.fromCharCode(65 + rem) + name;
+      index = Math.floor((index - 1) / 26);
+    }
+    return name;
+  }
+
+  function serialToDate(serial) {
+    // Excel's epoch is 1899-12-30, and it wrongly treats 1900 as a leap year.
+    var ms = Math.round((serial - 25569) * 86400000);
+    var d = new Date(ms);
+    if (isNaN(d.getTime())) return null;
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var date = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+    var mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+    return mins ? date + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) : date;
+  }
+
+  function readSharedStrings(zip) {
+    if (!zipHas(zip, 'xl/sharedStrings.xml')) return Promise.resolve([]);
+    return zipXml(zip, 'xl/sharedStrings.xml').then(function (doc) {
+      return tags(doc, 'si').map(function (si) {
+        // Rich text splits one string across several runs; join them back.
+        return tags(si, 't').map(function (t) { return t.textContent; }).join('');
+      });
+    });
+  }
+
+  function readStyles(zip) {
+    if (!zipHas(zip, 'xl/styles.xml')) return Promise.resolve([]);
+    return zipXml(zip, 'xl/styles.xml').then(function (doc) {
+      var custom = {};
+      tags(doc, 'numFmt').forEach(function (fmt) {
+        var id = parseInt(attr(fmt, 'numFmtId'), 10);
+        var code = attr(fmt, 'formatCode') || '';
+        // A custom format is a date format if it contains date tokens outside
+        // of quoted literal text.
+        custom[id] = /[ymdhs]/i.test(code.replace(/"[^"]*"/g, '')) && !/^[#0.,%]+$/.test(code);
+      });
+
+      var cellXfs = tags(doc, 'cellXfs')[0];
+      if (!cellXfs) return [];
+      return tags(cellXfs, 'xf').map(function (xf) {
+        var id = parseInt(attr(xf, 'numFmtId') || '0', 10);
+        return { isDate: !!DATE_FORMATS[id] || custom[id] === true };
+      });
+    });
+  }
+
+  function readSheetList(zip) {
+    return zipXml(zip, 'xl/workbook.xml').then(function (book) {
+      var rels = {};
+      var relsPromise = zipHas(zip, 'xl/_rels/workbook.xml.rels')
+        ? zipXml(zip, 'xl/_rels/workbook.xml.rels').then(function (doc) {
+            tags(doc, 'Relationship').forEach(function (rel) {
+              rels[attr(rel, 'Id')] = attr(rel, 'Target');
+            });
+          })
+        : Promise.resolve();
+
+      return relsPromise.then(function () {
+        return tags(book, 'sheet').map(function (sheet, i) {
+          var target = rels[attr(sheet, 'id')] || ('worksheets/sheet' + (i + 1) + '.xml');
+          if (target.charAt(0) === '/') target = target.slice(1);
+          else if (target.indexOf('xl/') !== 0) target = 'xl/' + target;
+          return { name: attr(sheet, 'name') || ('Sheet ' + (i + 1)), path: target };
+        });
+      });
+    });
+  }
+
+  function readSheet(zip, path, strings, styles) {
+    return zipXml(zip, path).then(function (doc) {
+      var rows = [];
+      var widest = 0;
+      var truncated = false;
+
+      var rowNodes = tags(doc, 'row');
+      for (var r = 0; r < rowNodes.length; r++) {
+        if (rows.length >= SHEET_MAX_ROWS) { truncated = true; break; }
+
+        var cells = [];
+        var cellNodes = tags(rowNodes[r], 'c');
+
+        for (var c = 0; c < cellNodes.length; c++) {
+          var cell = cellNodes[c];
+          var ref = attr(cell, 'r') || '';
+          var col = ref ? columnIndex(ref) : c;
+          if (col >= SHEET_MAX_COLS) { truncated = true; continue; }
+
+          var type = attr(cell, 't');
+          var styleIndex = parseInt(attr(cell, 's') || '-1', 10);
+          var valueNode = tags(cell, 'v')[0];
+          var raw = valueNode ? valueNode.textContent : '';
+          var text = '';
+          var numeric = false;
+
+          if (type === 's') {
+            text = strings[parseInt(raw, 10)] || '';
+          } else if (type === 'inlineStr') {
+            text = tags(cell, 't').map(function (t) { return t.textContent; }).join('');
+          } else if (type === 'b') {
+            text = raw === '1' ? 'TRUE' : 'FALSE';
+          } else if (type === 'e') {
+            text = raw;
+          } else if (raw !== '') {
+            var style = styles[styleIndex];
+            if (style && style.isDate) {
+              text = serialToDate(parseFloat(raw)) || raw;
+            } else {
+              // Trim binary-float noise: 0.30000000000000004 -> 0.3
+              var num = parseFloat(raw);
+              text = isNaN(num) ? raw : String(Math.round(num * 1e10) / 1e10);
+              numeric = true;
+            }
+          }
+
+          cells[col] = { text: text, numeric: numeric };
+          if (col + 1 > widest) widest = col + 1;
+        }
+
+        rows.push({ index: parseInt(attr(rowNodes[r], 'r') || (r + 1), 10), cells: cells });
+      }
+
+      // Trailing empty rows are common and add nothing to a preview.
+      while (rows.length && !rows[rows.length - 1].cells.some(function (c) { return c && c.text; })) {
+        rows.pop();
+      }
+
+      return { rows: rows, columns: widest, truncated: truncated };
+    });
+  }
+
+  /* -- document reading ---------------------------------------------------
+     A .docx keeps its text in word/document.xml: paragraphs (w:p) made of
+     runs (w:r) made of text (w:t), plus tables. Styling lives in named styles
+     and run properties, so the mapping to HTML is direct enough to do here.
+
+     What this reproduces: headings, bold, italic, underline, strikethrough,
+     super/subscript, links, lists, tables, images and alignment. What it
+     doesn't: page geometry, columns, headers and footers, and exact spacing —
+     a preview for reading, not a facsimile.
+     -------------------------------------------------------------------- */
+
+  var DOC_MAX_BLOCKS = 4000;
+
+  function readRels(zip, path) {
+    if (!zipHas(zip, path)) return Promise.resolve({});
+    return zipXml(zip, path).then(function (doc) {
+      var rels = {};
+      tags(doc, 'Relationship').forEach(function (rel) {
+        rels[attr(rel, 'Id')] = {
+          target: attr(rel, 'Target') || '',
+          external: (attr(rel, 'TargetMode') || '') === 'External'
+        };
+      });
+      return rels;
+    });
+  }
+
+  /* numbering.xml says whether a list level is bulleted or numbered; without
+     it every list would have to be guessed at, and guessing reads badly. */
+  function readNumbering(zip) {
+    if (!zipHas(zip, 'word/numbering.xml')) return Promise.resolve({});
+    return zipXml(zip, 'word/numbering.xml').then(function (doc) {
+      var abstract = {};
+      tags(doc, 'abstractNum').forEach(function (node) {
+        var id = attr(node, 'abstractNumId');
+        var levels = {};
+        tags(node, 'lvl').forEach(function (lvl) {
+          var fmt = tags(lvl, 'numFmt')[0];
+          levels[attr(lvl, 'ilvl') || '0'] = (fmt && attr(fmt, 'val')) === 'bullet' ? 'ul' : 'ol';
+        });
+        abstract[id] = levels;
+      });
+
+      var byNum = {};
+      tags(doc, 'num').forEach(function (node) {
+        var ref = tags(node, 'abstractNumId')[0];
+        byNum[attr(node, 'numId')] = abstract[ref && attr(ref, 'val')] || {};
+      });
+      return byNum;
+    });
+  }
+
+  /* Word usually puts w:numPr on the paragraph itself, but documents written
+     by other producers put it on the paragraph *style* instead — so a list
+     looks like an ordinary paragraph unless styles.xml is consulted too. */
+  function readDocStyles(zip) {
+    if (!zipHas(zip, 'word/styles.xml')) return Promise.resolve({});
+    return zipXml(zip, 'word/styles.xml').then(function (doc) {
+      var styles = {};
+      tags(doc, 'style').forEach(function (style) {
+        var id = attr(style, 'styleId');
+        if (!id) return;
+        var numPr = tags(style, 'numPr')[0];
+        if (!numPr) return;
+        var numId = tags(numPr, 'numId')[0];
+        var ilvl = tags(numPr, 'ilvl')[0];
+        styles[id] = {
+          numId: numId ? attr(numId, 'val') : null,
+          level: ilvl ? (attr(ilvl, 'val') || '0') : '0'
+        };
+      });
+      return styles;
+    });
+  }
+
+  function styleOf(paragraph) {
+    var style = tags(paragraph, 'pStyle')[0];
+    return style ? (attr(style, 'val') || '') : '';
+  }
+
+  function listInfo(paragraph, ctx) {
+    var id = null;
+    var level = '0';
+
+    var numPr = tags(paragraph, 'numPr')[0];
+    if (numPr) {
+      var numId = tags(numPr, 'numId')[0];
+      var ilvl = tags(numPr, 'ilvl')[0];
+      id = numId ? attr(numId, 'val') : null;
+      if (ilvl) level = attr(ilvl, 'val') || '0';
+    }
+
+    var style = styleOf(paragraph);
+
+    if (!id && style && ctx.styles[style]) {
+      id = ctx.styles[style].numId;
+      level = ctx.styles[style].level;
+    }
+
+    if (!id) {
+      // Last resort: the style name itself. ListBullet2 and ListNumber3 carry
+      // their indent level in the trailing digit.
+      var named = /^List(Bullet|Number|Paragraph)(\d)?$/.exec(style);
+      if (!named) return null;
+      return {
+        level: named[2] ? parseInt(named[2], 10) - 1 : 0,
+        tag: named[1] === 'Number' ? 'ol' : 'ul'
+      };
+    }
+
+    var levels = ctx.numbering[id] || {};
+    var depth = parseInt(level, 10) || 0;
+    // numId 0 means numbering was explicitly removed from this paragraph.
+    if (id === '0') return null;
+    return { level: depth, tag: levels[level] || 'ul' };
+  }
+
+  function runHtml(run) {
+    var props = tags(run, 'rPr')[0];
+    var text = '';
+
+    var children = run.childNodes;
+    for (var i = 0; i < children.length; i++) {
+      var node = children[i];
+      if (node.nodeType !== 1) continue;
+      if (node.localName === 't') text += esc(node.textContent);
+      else if (node.localName === 'br') text += '<br>';
+      else if (node.localName === 'tab') text += '&#9;';
+    }
+    if (!text) return '';
+
+    if (props) {
+      var on = function (name) {
+        var node = tags(props, name)[0];
+        if (!node) return false;
+        var val = attr(node, 'val');
+        return val !== '0' && val !== 'false' && val !== 'none';
+      };
+      if (on('b')) text = '<strong>' + text + '</strong>';
+      if (on('i')) text = '<em>' + text + '</em>';
+      if (on('u')) text = '<u>' + text + '</u>';
+      if (on('strike')) text = '<s>' + text + '</s>';
+
+      var vert = tags(props, 'vertAlign')[0];
+      var align = vert && attr(vert, 'val');
+      if (align === 'superscript') text = '<sup>' + text + '</sup>';
+      else if (align === 'subscript') text = '<sub>' + text + '</sub>';
+    }
+    return text;
+  }
+
+  function inlineHtml(scope, ctx) {
+    var html = '';
+    var children = scope.childNodes;
+
+    for (var i = 0; i < children.length; i++) {
+      var node = children[i];
+      if (node.nodeType !== 1) continue;
+
+      if (node.localName === 'r') {
+        html += imageHtml(node, ctx) || runHtml(node);
+      } else if (node.localName === 'hyperlink') {
+        var rel = ctx.rels[attr(node, 'id')];
+        var inner = inlineHtml(node, ctx);
+        if (!inner) continue;
+        // Only external links are followed; internal bookmarks go nowhere
+        // useful in a preview.
+        html += rel && rel.external
+          ? '<a href="' + esc(rel.target) + '" target="_blank" rel="noopener noreferrer">' + inner + '</a>'
+          : inner;
+      } else if (node.localName === 'smartTag' || node.localName === 'sdtContent') {
+        html += inlineHtml(node, ctx);
+      }
+    }
+    return html;
+  }
+
+  function imageHtml(run, ctx) {
+    var blip = tags(run, 'blip')[0];
+    if (!blip) return '';
+    var rel = ctx.rels[attr(blip, 'embed')];
+    if (!rel) return '';
+
+    var path = rel.target.charAt(0) === '/'
+      ? rel.target.slice(1)
+      : 'word/' + rel.target.replace(/^\.\//, '');
+    var url = ctx.images[path];
+    return url ? '<img class="fd-docimg" src="' + esc(url) + '" alt="">' : '';
+  }
+
+  function paragraphHtml(paragraph, ctx) {
+    var style = styleOf(paragraph);
+    var body = inlineHtml(paragraph, ctx);
+
+    var jc = tags(paragraph, 'jc')[0];
+    var align = jc && attr(jc, 'val');
+    var attrs = (align === 'center' || align === 'right' || align === 'both')
+      ? ' style="text-align:' + (align === 'both' ? 'justify' : align) + '"'
+      : '';
+
+    if (!body) return style ? '' : '<p class="fd-empty-p"></p>';
+
+    var heading = /^Heading(\d)$/.exec(style);
+    if (heading) {
+      var level = Math.min(6, parseInt(heading[1], 10) + 1); // h1 is the title
+      return '<h' + level + attrs + '>' + body + '</h' + level + '>';
+    }
+    if (style === 'Title') return '<h1' + attrs + '>' + body + '</h1>';
+    if (style === 'Subtitle') return '<p class="fd-subtitle"' + attrs + '>' + body + '</p>';
+    if (style === 'Quote' || style === 'IntenseQuote') {
+      return '<blockquote' + attrs + '>' + body + '</blockquote>';
+    }
+    return '<p' + attrs + '>' + body + '</p>';
+  }
+
+  function tableHtml(table, ctx) {
+    var html = '<table class="fd-doctable"><tbody>';
+
+    tags(table, 'tr').forEach(function (row) {
+      html += '<tr>';
+      // Only direct cells; a nested table's cells would otherwise leak in.
+      var cells = row.childNodes;
+      for (var i = 0; i < cells.length; i++) {
+        var cell = cells[i];
+        if (cell.nodeType !== 1 || cell.localName !== 'tc') continue;
+
+        var span = tags(cell, 'gridSpan')[0];
+        var colspan = span ? parseInt(attr(span, 'val') || '1', 10) : 1;
+        var inner = '';
+        var kids = cell.childNodes;
+        for (var k = 0; k < kids.length; k++) {
+          if (kids[k].nodeType !== 1) continue;
+          if (kids[k].localName === 'p') inner += paragraphHtml(kids[k], ctx);
+          else if (kids[k].localName === 'tbl') inner += tableHtml(kids[k], ctx);
+        }
+        html += '<td' + (colspan > 1 ? ' colspan="' + colspan + '"' : '') + '>' + inner + '</td>';
+      }
+      html += '</tr>';
+    });
+
+    return html + '</tbody></table>';
+  }
+
+  function bodyHtml(doc, ctx) {
+    var body = tags(doc, 'body')[0];
+    if (!body) return { html: '', truncated: false };
+
+    var html = '';
+    var openLists = [];   // stack of open list tags, for nesting
+    var blocks = 0;
+    var truncated = false;
+
+    var closeTo = function (depth) {
+      while (openLists.length > depth) html += '</' + openLists.pop() + '>';
+    };
+
+    var children = body.childNodes;
+    for (var i = 0; i < children.length; i++) {
+      var node = children[i];
+      if (node.nodeType !== 1) continue;
+      if (blocks >= DOC_MAX_BLOCKS) { truncated = true; break; }
+
+      if (node.localName === 'p') {
+        var list = listInfo(node, ctx);
+        if (list) {
+          // Consecutive list paragraphs become one list; indent level opens
+          // and closes nested ones.
+          while (openLists.length > list.level + 1) closeTo(openLists.length - 1);
+          while (openLists.length < list.level + 1) {
+            html += '<' + list.tag + '>';
+            openLists.push(list.tag);
+          }
+          html += '<li>' + (inlineHtml(node, ctx) || '') + '</li>';
+        } else {
+          closeTo(0);
+          html += paragraphHtml(node, ctx);
+        }
+        blocks++;
+      } else if (node.localName === 'tbl') {
+        closeTo(0);
+        html += tableHtml(node, ctx);
+        blocks++;
+      }
+    }
+    closeTo(0);
+
+    return { html: html, truncated: truncated };
+  }
+
+  var IMAGE_MIME = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml'
+  };
+
+  /* Images are pulled out of the archive as blob URLs. They're tracked so the
+     viewer can revoke them; left alone they'd leak for the page's lifetime. */
+  function readImages(zip, rels, created) {
+    var wanted = [];
+    Object.keys(rels).forEach(function (id) {
+      var target = rels[id].target || '';
+      if (rels[id].external || !/\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(target)) return;
+      var path = target.charAt(0) === '/' ? target.slice(1) : 'word/' + target.replace(/^\.\//, '');
+      if (zipHas(zip, path) && wanted.indexOf(path) < 0) wanted.push(path);
+    });
+
+    var images = {};
+    return wanted.reduce(function (chain, path) {
+      return chain.then(function () {
+        return zipBytes(zip, path).then(function (bytes) {
+          var ext = (path.split('.').pop() || '').toLowerCase();
+          var blob = new window.Blob([bytes], { type: IMAGE_MIME[ext] || 'application/octet-stream' });
+          var url = window.URL.createObjectURL(blob);
+          created.push(url);
+          images[path] = url;
+        }, function () { /* a missing image shouldn't sink the document */ });
+      });
+    }, Promise.resolve()).then(function () { return images; });
+  }
+
   /* -- constructor ------------------------------------------------------- */
 
   function Filedeck(options) {
@@ -273,6 +912,10 @@ window.Filedeck = (function () {
     this.showFilmstrip = options.filmstrip !== false;
 
     this.labels = assign(assign({}, LABELS), options.labels);
+
+    // Keyed by file extension or kind. Filedeck ships no document converters;
+    // this is where one gets plugged in without the core gaining a dependency.
+    this.renderers = normaliseRenderers(options.renderers);
 
     this.zoomMin = options.zoomMin || ZOOM_MIN;
     this.zoomMax = options.zoomMax || ZOOM_MAX;
@@ -394,7 +1037,7 @@ window.Filedeck = (function () {
     // file), alt describes the thumbnail's content. For a filename the
     // former is the better source.
     var name = d.name || el.getAttribute('title') || (thumb && thumb.alt) || basename(url);
-    var kind = kindFor(url, d.kind, name);
+    var kind = kindFor(url, d.kind, name, this.renderers);
 
     return {
       el: el,
@@ -405,8 +1048,13 @@ window.Filedeck = (function () {
       thumb: d.thumb || (thumb ? (thumb.currentSrc || thumb.src) : (kind === 'image' ? url : '')),
       name: name,
       kind: kind,
+      // What the file *is*, which labels the type icon. Can differ from the
+      // kind when a preview URL points at a converted file.
       ext: extOf(name) || extOf(url),
-      caps: capsFor(kind),
+      caps: capsFor(kind, this.renderers),
+      // Preview and download can be different URLs: a converted PDF on the
+      // stage, the original file behind the Download button.
+      download: d.download || url,
       caption: d.caption || (thumb && thumb.alt) || '',
       meta: d.meta || '',
       size: d.size || '',
@@ -482,6 +1130,12 @@ window.Filedeck = (function () {
 
     var thumb = t.closest('.fd-thumb');
     if (thumb) { this.goTo(parseInt(thumb.dataset.index, 10)); return; }
+
+    var tab = t.closest('.fd-sheet-tab');
+    if (tab && this._sheetState) {
+      this._paintSheet(this.els.canvas, parseInt(tab.dataset.sheet, 10));
+      return;
+    }
 
     var hit = t.closest('[data-fd]');
     if (hit) {
@@ -893,6 +1547,7 @@ window.Filedeck = (function () {
   };
 
   Filedeck.prototype._renderStage = function (item) {
+    var self = this;
     // The slide wraps the canvas and caption as one unit; the canvas inside
     // it owns the zoom and pan transform.
     var slide = document.createElement('div');
@@ -907,12 +1562,25 @@ window.Filedeck = (function () {
     if (kind === 'pdf' && !canEmbedPdf()) kind = 'file';
     canvas.className = 'fd-canvas fd-canvas--' + kind;
 
-    switch (kind) {
-      case 'image': this._renderImage(item, canvas); break;
-      case 'pdf':   this._renderPdf(item, canvas); break;
-      case 'video': this._renderVideo(item, canvas); break;
-      case 'audio': this._renderAudio(item, canvas); break;
-      default:      this._renderFile(item, canvas); break;
+    var custom = this.renderers[kind];
+    if (custom) {
+      this._runRenderer(custom, item, canvas);
+    } else {
+      switch (kind) {
+        case 'image': this._renderImage(item, canvas); break;
+        case 'pdf':   this._renderPdf(item, canvas); break;
+        case 'video': this._renderVideo(item, canvas); break;
+        case 'audio': this._renderAudio(item, canvas); break;
+        case 'doc':   this._runRenderer({
+                        fill: true,
+                        render: function (i, c, api) { return self._renderDoc(i, c, api); }
+                      }, item, canvas); break;
+        case 'sheet': this._runRenderer({
+                        fill: true,
+                        render: function (i, c, api) { return self._renderSheet(i, c, api); }
+                      }, item, canvas); break;
+        default:      this._renderFile(item, canvas); break;
+      }
     }
 
     slide.appendChild(canvas);
@@ -938,6 +1606,49 @@ window.Filedeck = (function () {
      One per kind. Each fills the canvas element it's handed; adding a new
      type means adding a method and a case, nothing else.
      -------------------------------------------------------------------- */
+
+  /* Runs a consumer-supplied renderer. It may fill the canvas synchronously
+     or return a promise; either way a rejection or a throw lands on the file
+     card rather than leaving an empty stage. */
+  Filedeck.prototype._runRenderer = function (renderer, item, canvas) {
+    var self = this;
+
+    if (renderer.fill) canvas.classList.add('fd-canvas--fill');
+    else if (item.width && item.height) {
+      canvas.style.setProperty('--fd-ar', item.width + ' / ' + item.height);
+    }
+
+    var api = {
+      // Hand back to the built-in card, e.g. when a converter gives up.
+      fallback: function (message) {
+        self._renderFallback(item, canvas, message || self.labels.noPreview);
+      },
+      labels: self.labels,
+      filedeck: self
+    };
+
+    canvas.classList.add('is-loading');
+
+    var done = function () { canvas.classList.remove('is-loading'); };
+    var failed = function () {
+      done();
+      if (self.els.canvas === canvas) api.fallback();
+    };
+
+    var result;
+    try {
+      result = renderer.render(item, canvas, api);
+    } catch (e) {
+      failed();
+      return;
+    }
+
+    if (result && typeof result.then === 'function') {
+      result.then(done, failed);
+    } else {
+      done();
+    }
+  };
 
   Filedeck.prototype._renderImage = function (item, canvas) {
     var self = this;
@@ -1041,6 +1752,174 @@ window.Filedeck = (function () {
     canvas.appendChild(wrap);
   };
 
+  /* -- document renderer --------------------------------------------------- */
+
+  Filedeck.prototype._renderDoc = function (item, canvas, api) {
+    var self = this;
+
+    var guard = this._previewGuard(api);
+    if (guard) return guard;
+
+    return fetch(item.url, { credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('http-' + res.status);
+        return res.arrayBuffer();
+      })
+      .then(function (buffer) {
+        if (buffer.byteLength > ZIP_MAX_BYTES) throw new Error('too-big');
+        var zip = zipOpen(buffer);
+
+        self._revokeDocImages();
+        var created = [];
+
+        return readRels(zip, 'word/_rels/document.xml.rels').then(function (rels) {
+          return Promise.all([readNumbering(zip), readImages(zip, rels, created), readDocStyles(zip)])
+            .then(function (parts) {
+              return zipXml(zip, 'word/document.xml').then(function (doc) {
+                if (self.els.canvas !== canvas) {
+                  created.forEach(function (url) { window.URL.revokeObjectURL(url); });
+                  return;
+                }
+                self._docImages = created;
+
+                var out = bodyHtml(doc, {
+                  rels: rels, numbering: parts[0], images: parts[1], styles: parts[2]
+                });
+
+                var html = '<article class="fd-page">';
+                html += out.html || '<p class="fd-doc-empty">' + esc(self.labels.docEmpty) + '</p>';
+                if (out.truncated) {
+                  html += '<p class="fd-doc-note">' +
+                    esc(fill(self.labels.docTruncated, { blocks: DOC_MAX_BLOCKS })) + '</p>';
+                }
+                canvas.innerHTML = html + '</article>';
+              });
+            });
+        });
+      })
+      .catch(function (err) {
+        api.fallback(err && err.message === 'too-big'
+          ? self.labels.previewTooBig
+          : self.labels.previewFailed);
+      });
+  };
+
+  /* Conditions that stop any zip-backed preview before a request is made, so
+     the message names the actual problem instead of "couldn't be read". */
+  Filedeck.prototype._previewGuard = function (api) {
+    if (location.protocol === 'file:') {
+      api.fallback(this.labels.previewNeedsHttp);
+      return Promise.resolve();
+    }
+    if (!window.DecompressionStream) {
+      api.fallback(this.labels.previewUnsupported);
+      return Promise.resolve();
+    }
+    return null;
+  };
+
+  Filedeck.prototype._revokeDocImages = function () {
+    if (!this._docImages) return;
+    this._docImages.forEach(function (url) { window.URL.revokeObjectURL(url); });
+    this._docImages = null;
+  };
+
+  /* -- spreadsheet renderer ------------------------------------------------
+     Renders a workbook as a grid with column letters and row numbers, which
+     is how people read a spreadsheet — the first row is data, not necessarily
+     a header, so nothing is assumed about it.
+     -------------------------------------------------------------------- */
+
+  Filedeck.prototype._renderSheet = function (item, canvas, api) {
+    var self = this;
+
+    var guard = this._previewGuard(api);
+    if (guard) return guard;
+
+    return fetch(item.url, { credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('http-' + res.status);
+        return res.arrayBuffer();
+      })
+      .then(function (buffer) {
+        if (buffer.byteLength > ZIP_MAX_BYTES) throw new Error('too-big');
+        var zip = zipOpen(buffer);
+
+        return Promise.all([readSharedStrings(zip), readStyles(zip), readSheetList(zip)])
+          .then(function (parts) {
+            var strings = parts[0], styles = parts[1], sheets = parts[2];
+            if (!sheets.length) throw new Error('no-sheets');
+
+            self._sheetState = { zip: zip, strings: strings, styles: styles, sheets: sheets, active: 0 };
+            return self._paintSheet(canvas, 0);
+          });
+      })
+      .catch(function (err) {
+        api.fallback(
+          err && err.message === 'too-big'
+            ? self.labels.previewTooBig
+            : self.labels.previewFailed
+        );
+      });
+  };
+
+  Filedeck.prototype._paintSheet = function (canvas, index) {
+    var self = this;
+    var state = this._sheetState;
+    var sheet = state.sheets[index];
+    state.active = index;
+
+    return readSheet(state.zip, sheet.path, state.strings, state.styles).then(function (data) {
+      if (self.els.canvas !== canvas) return; // navigated away mid-parse
+
+      var html = '<div class="fd-sheet">';
+
+      if (state.sheets.length > 1) {
+        html += '<div class="fd-sheet-tabs" role="tablist">';
+        state.sheets.forEach(function (s, i) {
+          html += '<button type="button" class="fd-sheet-tab' + (i === index ? ' on' : '') +
+            '" data-sheet="' + i + '" role="tab" aria-selected="' + (i === index) + '">' +
+            esc(s.name) + '</button>';
+        });
+        html += '</div>';
+      }
+
+      html += '<div class="fd-sheet-scroll">';
+
+      if (!data.rows.length) {
+        html += '<p class="fd-sheet-empty">' + esc(self.labels.sheetEmpty) + '</p>';
+      } else {
+        html += '<table class="fd-grid"><thead><tr><th class="fd-corner"></th>';
+        for (var c = 0; c < data.columns; c++) {
+          html += '<th>' + columnName(c) + '</th>';
+        }
+        html += '</tr></thead><tbody>';
+
+        data.rows.forEach(function (row) {
+          html += '<tr><th class="fd-rownum">' + row.index + '</th>';
+          for (var c = 0; c < data.columns; c++) {
+            var cell = row.cells[c];
+            html += cell && cell.numeric
+              ? '<td class="fd-num">' + esc(cell.text) + '</td>'
+              : '<td>' + esc(cell ? cell.text : '') + '</td>';
+          }
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+      }
+
+      if (data.truncated) {
+        html += '<p class="fd-sheet-note">' + esc(fill(self.labels.sheetTruncated, {
+          rows: SHEET_MAX_ROWS, columns: SHEET_MAX_COLS
+        })) + '</p>';
+      }
+
+      html += '</div></div>';
+      canvas.innerHTML = html;
+    });
+  };
+
   Filedeck.prototype._renderFile = function (item, canvas) {
     // No browser renders docx, xlsx or CAD. Rather than pretend, the card says
     // what the file is and puts the download one click away.
@@ -1054,7 +1933,7 @@ window.Filedeck = (function () {
     canvas.querySelector('b').textContent = item.name;
 
     var link = canvas.querySelector('.fd-doc-dl');
-    link.href = item.url;
+    link.href = item.download;
     link.setAttribute('download', item.name);
   };
 
@@ -1074,6 +1953,7 @@ window.Filedeck = (function () {
   };
 
   Filedeck.prototype._swapSlide = function (slide) {
+    this._revokeDocImages();
     var outgoing = this.els.slide;
     if (outgoing) {
       pauseMedia(outgoing); // removing the node isn't enough on every browser
@@ -1116,7 +1996,7 @@ window.Filedeck = (function () {
     this.els.next.disabled = this.state.index === this.items.length - 1;
 
     if (this.els.download) {
-      this.els.download.href = item.url;
+      this.els.download.href = item.download;
       this.els.download.setAttribute('download', item.name);
     }
   };
@@ -1209,6 +2089,7 @@ window.Filedeck = (function () {
     this.els.stage.removeEventListener('wheel', this._h.wheel);
     this.els.stage.removeEventListener('dblclick', this._h.dblclick);
     clearTimeout(this._flashTimer);
+    this._revokeDocImages();
     document.body.classList.remove('fd-lock'); // never strand a locked page
     if (this.root.parentNode) this.root.parentNode.removeChild(this.root);
     this.state.isOpen = false;
