@@ -81,6 +81,7 @@ viewer deliberately ignores modified clicks.
 | `data-size` | no | Shown in the caption and on the document card. Format it yourself ("2.4 MB"). |
 | `data-width` / `data-height` | no | Intrinsic pixel dimensions. Prevents a reflow on first paint — see below. |
 | `data-thumb` | no | Filmstrip thumbnail URL. Use it when the trigger has no nested `<img>` and the full-size file is too heavy to reuse. |
+| `data-download` | no | URL for the Download button when it differs from `href` — a converted preview on the stage, the original file to download. |
 | `data-kind` | no | Overrides the kind detected from the extension. One of `image`, `pdf`, `video`, `audio`, `file`. |
 
 \* Required unless `data-src` is present.
@@ -149,6 +150,8 @@ a permission-checked download view like `/attachments/12/download/`.
 | `pdf` | pdf | `<embed>` using the browser's own PDF viewer |
 | `video` | mp4, webm, ogv, mov, m4v | `<video controls>` |
 | `audio` | mp3, wav, ogg, oga, m4a, aac, flac | `<audio controls>` on a card |
+| `sheet` | xlsx, xlsm | A scrollable grid with sheet tabs, read in the browser |
+| `doc` | docx, docm | A formatted reading column, read in the browser |
 | `file` | anything else | Card with file type, size, and a download button |
 
 Zoom and pan apply to images only; the zoom cluster hides itself for every
@@ -191,7 +194,8 @@ new Filedeck({
   zoomStep: 25,
 
   gestures: true,                // false disables the pointer layer
-  labels: {}                     // see below
+  labels: {},                    // see below
+  renderers: {}                  // custom previews, see below
 });
 ```
 
@@ -224,6 +228,125 @@ new Filedeck({
 ```
 
 Any key you omit keeps its default.
+
+---
+
+## Spreadsheets
+
+`.xlsx` and `.xlsm` render natively, with no dependency. An Office file is a
+zip archive of XML, and browsers can already open both — `DecompressionStream`
+for the archive, `DOMParser` for the XML — so Filedeck reads the workbook
+directly.
+
+What you get: a scrollable grid with column letters and row numbers, sticky
+headers, tabs for multi-sheet workbooks, shared strings, dates converted from
+their serial numbers, and booleans.
+
+What you don't: formatting, colours, charts, images, merged cells, or formula
+text. Cells show their last calculated value, which is what Excel stores
+alongside the formula. Row and column ceilings are 2,000 and 64; past those the
+grid is cut off with a note saying so.
+
+It's a preview for checking a figure before deciding to open the file, not a
+spreadsheet viewer. Anything larger than 20 MB shows the file card instead, and
+so does a corrupt archive, a failed request, or a browser without
+`DecompressionStream` — each with its own message rather than a blank stage.
+
+Old binary `.xls` files are not zips and are not supported; they get the card.
+
+---
+
+## Word documents
+
+`.docx` and `.docm` render natively, through the same zip reader as
+spreadsheets.
+
+What you get: headings, paragraphs, bold, italic, underline, strikethrough,
+super- and subscript, bulleted and numbered lists including nesting, tables,
+embedded images, block quotes, alignment, and external links.
+
+What you don't: page geometry, columns, headers and footers, footnotes,
+tracked changes, comments, or exact spacing and fonts. It reads as a clean
+document, not as a facsimile of the Word page.
+
+Documents are capped at 4,000 blocks; past that the preview is cut off with a
+note. Embedded images become blob URLs and are released when you navigate away
+or close, so nothing accumulates.
+
+Old binary `.doc` files are not zips and are not supported; they get the card.
+
+### Where list numbering comes from
+
+Word marks list paragraphs with `w:numPr`, but documents written by other
+producers — python-docx among them — put it on the paragraph *style* instead.
+Filedeck checks the paragraph, then `styles.xml`, then the style name, so lists
+render as lists either way.
+
+---
+
+## Custom renderers
+
+For anything Filedeck doesn't read — PowerPoint, CAD, or Word at full fidelity
+— register your own renderer. Two options exist for Word specifically.
+
+### Convert on the server
+
+Generate a PDF at upload time — LibreOffice headless is the usual tool — store
+it, and point `href` at the preview while `data-download` keeps the original:
+
+```html
+<a href="/attachments/12/preview.pdf"
+   data-download="/attachments/12/download/"
+   data-filedeck="files"
+   title="supplier-agreement.docx">
+  supplier-agreement.docx
+</a>
+```
+
+The viewer needs nothing new for this: a converted preview is just a PDF. The
+kind is taken from the URL, so the stage shows the PDF while the header and the
+type icon still say `.docx`.
+
+### Render in the browser
+
+Register a renderer keyed by extension. Doing so promotes that extension to a
+kind of its own, so it stops falling through to the file card:
+
+```js
+import { renderAsync } from 'docx-preview';
+
+new Filedeck({
+  renderers: {
+    docx: {
+      fill: true,                       // take the whole stage and scroll
+      render: async (item, canvas, api) => {
+        const res = await fetch(item.url);
+        if (!res.ok) return api.fallback('Preview unavailable');
+        await renderAsync(await res.blob(), canvas);
+      }
+    },
+
+    // A bare function works too, when there's nothing to configure.
+    csv: (item, canvas) => fetch(item.url)
+      .then(r => r.text())
+      .then(text => { canvas.innerHTML = toTable(text); })
+  }
+});
+```
+
+**The renderer contract**
+
+- Called as `render(item, canvas, api)`. Fill `canvas` however you like.
+- Return a promise for async work. Filedeck shows its loading state until it
+  settles, and a rejection or a thrown error falls back to the file card —
+  so a failed conversion is never a blank stage.
+- `api.fallback(message)` switches to the card deliberately, with your wording.
+- `api.labels` is the resolved label set, for renderers that show text.
+- Options on the renderer object: `fill` (take the whole stage, scrollable),
+  `zoom` and `preload` (both default to false).
+
+Filedeck stays dependency-free either way — the renderer and whatever library
+it uses live in your application, not in this package.
 
 ---
 
