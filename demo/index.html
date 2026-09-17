@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Filedeck — demo</title>
 
-<link rel="stylesheet" href="../dist/filedeck.min.css">
+<link rel="stylesheet" href="../src/filedeck.css">
 
 <style>
   /* Page chrome only — none of this is part of Filedeck. */
@@ -179,19 +179,19 @@
     <a class="tile" href="assets/bill-of-materials.xlsx"
        data-filedeck="files"
        data-size="5 KB"
-       data-meta="No browser renders xlsx — file card"
+       data-meta="Rendered in the browser — no dependency"
        title="bill-of-materials.xlsx">
       <div class="shot"><span class="kind k-xls">XLS</span></div>
-      <div class="m"><b>bill-of-materials.xlsx</b><span>Spreadsheet · 5 KB</span></div>
+      <div class="m"><b>bill-of-materials.xlsx</b><span>Spreadsheet · opens as a grid</span></div>
     </a>
 
     <a class="tile" href="assets/supplier-agreement.docx"
        data-filedeck="files"
-       data-size="36 KB"
-       data-meta="No browser renders docx — file card"
+       data-size="39 KB"
+       data-meta="Rendered in the browser — no dependency"
        title="supplier-agreement.docx">
       <div class="shot"><span class="kind k-doc">DOC</span></div>
-      <div class="m"><b>supplier-agreement.docx</b><span>Document · 36 KB</span></div>
+      <div class="m"><b>supplier-agreement.docx</b><span>Document · opens as a page</span></div>
     </a>
 
   </div>
@@ -222,7 +222,7 @@
   </div>
 </section>
 
-<script src="../dist/filedeck.umd.min.js"></script>
+<script src="../src/filedeck.js"></script>
 <script>
   window.filedeck = new Filedeck();
 
