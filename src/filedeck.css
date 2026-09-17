@@ -327,6 +327,195 @@ body.fd-lock { overflow: hidden; }
 
 /* -- per-kind canvases --------------------------------------------------- */
 
+/* Custom renderers can ask for the whole stage — a document preview wants
+   room and its own scrollbar, not a fitted box. */
+.fd-canvas--fill {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  background: var(--fd-card-bg, #FFFFFF);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: auto;
+}
+
+/* -- document ------------------------------------------------------------
+   A reading column on a page, not a facsimile of Word's layout.
+   ---------------------------------------------------------------------- */
+
+.fd-canvas--doc { aspect-ratio: auto; width: 100%; height: 100%; background: var(--fd-card-bg, #FFFFFF); overflow: auto; -webkit-overflow-scrolling: touch; touch-action: auto; }
+
+.fd-page {
+  max-width: 76ch;
+  margin: 0 auto;
+  padding: 48px 40px 64px;
+  color: var(--fd-card-text, #1C1E33);
+  font: 400 15.5px/1.72 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+}
+
+.fd-page h1, .fd-page h2, .fd-page h3,
+.fd-page h4, .fd-page h5, .fd-page h6 {
+  line-height: 1.25;
+  margin: 1.9em 0 .55em;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.fd-page > :first-child { margin-top: 0; }
+.fd-page h1 { font-size: 1.85em; }
+.fd-page h2 { font-size: 1.42em; }
+.fd-page h3 { font-size: 1.18em; }
+.fd-page h4, .fd-page h5, .fd-page h6 { font-size: 1em; }
+
+.fd-page p { margin: 0 0 1em; }
+.fd-page .fd-empty-p { margin: 0 0 .6em; min-height: .6em; }
+.fd-page .fd-subtitle { color: var(--fd-card-muted, #71758C); font-size: 1.1em; margin-top: -.4em; }
+
+.fd-page ul, .fd-page ol { margin: 0 0 1em; padding-left: 1.6em; }
+.fd-page li { margin: .25em 0; }
+
+.fd-page blockquote {
+  margin: 1.2em 0;
+  padding: .2em 0 .2em 1.1em;
+  border-left: 3px solid var(--fd-rule, #E2E4F0);
+  color: var(--fd-card-muted, #71758C);
+}
+
+.fd-page a { color: var(--fd-accent, #4D5BE3); }
+
+.fd-docimg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.4em auto;
+  border-radius: 4px;
+}
+
+.fd-doctable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.3em 0;
+  font-size: .94em;
+}
+
+.fd-doctable td {
+  border: 1px solid var(--fd-rule, #E2E4F0);
+  padding: 8px 11px;
+  vertical-align: top;
+}
+
+.fd-doctable td > p:last-child { margin-bottom: 0; }
+
+.fd-doc-empty, .fd-doc-note {
+  color: var(--fd-card-muted, #71758C);
+  font-size: .92em;
+}
+
+.fd-doc-note { border-top: 1px solid var(--fd-rule, #E2E4F0); margin-top: 2em; padding-top: 1em; }
+
+@media (max-width: 680px) {
+  .fd-page { padding: 28px 22px 44px; font-size: 15px; }
+}
+
+/* -- spreadsheet --------------------------------------------------------- */
+
+.fd-canvas--sheet { aspect-ratio: auto; width: 100%; height: 100%; background: var(--fd-card-bg, #FFFFFF); }
+
+.fd-sheet { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+.fd-sheet-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--fd-rule, #E2E4F0);
+  background: var(--fd-card-bg, #FFFFFF);
+}
+
+.fd-sheet-tab {
+  flex: none;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  border-radius: 7px 7px 0 0;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: 500 13px/1 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: var(--fd-card-muted, #71758C);
+}
+
+.fd-sheet-tab:hover { color: var(--fd-card-text, #1C1E33); }
+
+.fd-sheet-tab.on {
+  color: var(--fd-card-text, #1C1E33);
+  border-color: var(--fd-rule, #E2E4F0);
+  background: var(--fd-sheet-head, #F4F5FA);
+}
+
+.fd-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: auto;
+}
+
+.fd-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font: 400 13px/1.45 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: var(--fd-card-text, #1C1E33);
+  white-space: nowrap;
+}
+
+.fd-grid th,
+.fd-grid td {
+  border-right: 1px solid var(--fd-rule, #E2E4F0);
+  border-bottom: 1px solid var(--fd-rule, #E2E4F0);
+  padding: 6px 11px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Column letters and row numbers stay put while the grid scrolls. */
+.fd-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--fd-sheet-head, #F4F5FA);
+  font: 600 11.5px/1.45 var(--fd-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--fd-card-muted, #71758C);
+  text-align: center;
+  min-width: 56px;
+}
+
+.fd-grid .fd-rownum {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--fd-sheet-head, #F4F5FA);
+  font: 500 11.5px/1.45 var(--fd-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--fd-card-muted, #71758C);
+  text-align: right;
+  min-width: 44px;
+}
+
+.fd-grid .fd-corner { position: sticky; left: 0; z-index: 3; min-width: 44px; }
+.fd-grid .fd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.fd-grid tbody tr:hover td { background: var(--fd-sheet-hover, #F8F9FC); }
+
+.fd-sheet-empty,
+.fd-sheet-note {
+  margin: 0;
+  padding: 16px 18px;
+  font: 400 13px/1.5 var(--fd-font, ui-sans-serif, system-ui, sans-serif);
+  color: var(--fd-card-muted, #71758C);
+}
+
+.fd-sheet-note { border-top: 1px solid var(--fd-rule, #E2E4F0); }
+
 /* PDF fills the stage — a page-shaped box wastes the space a reader wants. */
 .fd-canvas--pdf {
   aspect-ratio: auto;
