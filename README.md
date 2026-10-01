@@ -6,6 +6,8 @@ it reads everything from the DOM it is already looking at.
 
 Add one attribute to the links you already have, and they become a viewer.
 
+**Live demo:** [vivekgami.github.io/filedeck](https://vivekgami.github.io/filedeck/) — click any file on the page.
+
 ---
 
 ## Install
