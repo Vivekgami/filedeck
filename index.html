@@ -293,7 +293,7 @@ a:hover { color: var(--accent); }
 .fdl-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(24px, 4vw, 54px) clamp(16px, 3vw, 44px) clamp(18px, 2.6vw, 34px);
+  padding: clamp(24px, 4vw, 80px) clamp(16px, 3vw, 44px) clamp(18px, 2.6vw, 52px);
 }
 .fdl-arcs {
   position: absolute;
@@ -311,7 +311,7 @@ a:hover { color: var(--accent); }
 
 /* Decoration, and only worth the room on a wide screen. */
 .fdl-chips { display: none; position: absolute; inset: 0; pointer-events: none; }
-@media (min-width: 980px) { .fdl-chips { display: block; } }
+@media (min-width: 1080px) { .fdl-chips { display: block; } }
 .fdl-chip {
   position: absolute;
   display: inline-flex;
@@ -334,11 +334,11 @@ a:hover { color: var(--accent); }
 .fdl-chip-docx { top: 55%; right: 10%; color: var(--indigo); animation-duration: 8.8s; animation-delay: .9s; }
 .fdl-chip-jpg  { top: 75%; right: 5%;  width: 42px; height: 42px; border-radius: 13px; color: var(--teal);   animation-duration: 7.1s; animation-delay: 1.7s; }
 
-.fdl-hero-body { position: relative; z-index: 2; max-width: 700px; margin: 0 auto; text-align: center; }
+.fdl-hero-body { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; text-align: center; }
 .fdl-eyebrow-row {
   display: inline-flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   flex-wrap: wrap;
   justify-content: center;
   font: 500 13.5px/1 var(--sans);
@@ -349,7 +349,7 @@ a:hover { color: var(--accent); }
 .fdl-dot { width: 7px; height: 7px; border-radius: 50%; }
 .fdl-h1 {
   margin: clamp(16px, 2.4vw, 24px) 0 0;
-  font: 600 clamp(36px, 5.6vw, 62px)/1.06 var(--sans);
+  font: 600 clamp(36px, 4.2vw + 14px, 72px)/1.06 var(--sans);
   letter-spacing: -0.035em;
   text-wrap: balance;
   animation: fdl-up 700ms var(--ease) 150ms both;
@@ -367,9 +367,14 @@ a:hover { color: var(--accent); }
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
-  margin: clamp(22px, 3vw, 32px) 0 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: clamp(22px, 3vw, 32px) auto 0;
   animation: fdl-up 700ms var(--ease) 310ms both;
 }
+/* Natural width while both buttons fit on one line; once they wrap, each
+   takes the full row. */
+.fdl-hero-cta .fdl-btn, .fdl-cta-row .fdl-btn { flex: 1 1 auto; }
 
 /* -- format strip -------------------------------------------------------- */
 .fdl-strip {
@@ -392,7 +397,7 @@ a:hover { color: var(--accent); }
 
 /* -- shared section furniture -------------------------------------------- */
 .fdl-section { padding: clamp(26px, 3.6vw, 52px) clamp(4px, 1.5vw, 14px) 0; }
-.fdl-head { max-width: 640px; margin: 0 auto; text-align: center; }
+.fdl-head { max-width: 640px; margin: 0 auto; padding: 0 10px; text-align: center; }
 .fdl-eyebrow {
   font: 500 12.5px/1 var(--mono);
   letter-spacing: 0.1em;
@@ -540,10 +545,11 @@ a:hover { color: var(--accent); }
 .fdl-copy-float { position: absolute; top: 14px; right: 14px; z-index: 2; height: 31px; }
 
 /* -- attribute reference ------------------------------------------------- */
+/* Capped at three columns, so the six cards land 3 × 2, 2 × 3 or 1 × 6. */
 .fdl-attrs {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(280px, calc((100% - 16px) / 3))), 1fr));
   gap: 8px;
 }
 .fdl-attr {
@@ -559,7 +565,14 @@ code.fdl-inline { font: 400 13px/1.4 var(--mono); color: var(--accent); }
 code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue); }
 
 /* -- formats ------------------------------------------------------------- */
-.fdl-formats { grid-template-columns: repeat(auto-fit, minmax(min(248px, 100%), 1fr)); }
+/* Two nested levels so the four cards never split 3 + 1: four across,
+   2 × 2 on tablets, stacked on phones. */
+.fdl-formats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+.fdl-format-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
 .fdl-format {
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -585,7 +598,10 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
 .i-xls { background: #EAF6EF; color: var(--green); }
 
 /* -- controls ------------------------------------------------------------ */
-.fdl-controls { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+/* Flex rather than grid: on a tablet the third panel wraps and takes the
+   whole row instead of leaving a hole beside it. */
+.fdl-controls { display: flex; flex-wrap: wrap; }
+.fdl-controls > * { flex: 1 1 300px; min-width: 0; }
 .fdl-panel-title { margin-bottom: 14px; }
 .fdl-rows { margin: 0; display: grid; }
 .fdl-row {
@@ -619,7 +635,8 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
   border: 1px solid var(--hairline);
   border-radius: 20px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  /* max three columns: 3 × 2, 2 × 3 or 1 × 6 */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(300px, calc((100% - 64px) / 3))), 1fr));
   gap: 2px 32px;
 }
 .fdl-list li {
@@ -656,10 +673,12 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: clamp(22px, 3vw, 32px);
+  width: fit-content;
+  max-width: 100%;
+  margin: clamp(22px, 3vw, 32px) auto 0;
 }
 .fdl-footer {
-  padding: clamp(16px, 2.2vw, 24px) clamp(6px, 1.5vw, 14px);
+  padding: clamp(16px, 2.2vw, 24px) clamp(10px, 1.5vw, 14px);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -947,25 +966,29 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
       <p class="fdl-lede">Every file gets a sensible landing. Controls that make no sense for a format quietly don't appear — no greyed-out buttons pretending to be useful.</p>
     </div>
     <div class="fdl-grid fdl-formats">
-      <div class="fdl-format" data-reveal>
-        <span class="fdl-format-icon i-img">IMG</span>
-        <h3>Pictures</h3>
-        <p>Zoom to 400%, pan around, pinch on a phone. <code class="fdl-inline">jpg png gif webp avif svg</code></p>
+      <div class="fdl-format-pair">
+        <div class="fdl-format" data-reveal>
+          <span class="fdl-format-icon i-img">IMG</span>
+          <h3>Pictures</h3>
+          <p>Zoom to 400%, pan around, pinch on a phone. <code class="fdl-inline">jpg png gif webp avif svg</code></p>
+        </div>
+        <div class="fdl-format" data-reveal>
+          <span class="fdl-format-icon i-pdf">PDF</span>
+          <h3>Paperwork</h3>
+          <p>The browser's own PDF reader, embedded full-stage. Small screens get a tidy card instead.</p>
+        </div>
       </div>
-      <div class="fdl-format" data-reveal>
-        <span class="fdl-format-icon i-pdf">PDF</span>
-        <h3>Paperwork</h3>
-        <p>The browser's own PDF reader, embedded full-stage. Small screens get a tidy card instead.</p>
-      </div>
-      <div class="fdl-format" data-reveal>
-        <span class="fdl-format-icon i-av">A/V</span>
-        <h3>Sound and motion</h3>
-        <p>Native players, so scrubbing stays scrubbing. <code class="fdl-inline">mp4 webm mp3 wav</code></p>
-      </div>
-      <div class="fdl-format" data-reveal>
-        <span class="fdl-format-icon i-xls">XLS</span>
-        <h3>The awkward ones</h3>
-        <p>Spreadsheets, documents, CAD: no preview for these yet — you get a labelled file card with the size and a download button.</p>
+      <div class="fdl-format-pair">
+        <div class="fdl-format" data-reveal>
+          <span class="fdl-format-icon i-av">A/V</span>
+          <h3>Sound and motion</h3>
+          <p>Native players, so scrubbing stays scrubbing. <code class="fdl-inline">mp4 webm mp3 wav</code></p>
+        </div>
+        <div class="fdl-format" data-reveal>
+          <span class="fdl-format-icon i-xls">XLS</span>
+          <h3>The awkward ones</h3>
+          <p>Spreadsheets, documents, CAD: no preview for these yet — you get a labelled file card with the size and a download button.</p>
+        </div>
       </div>
     </div>
   </section>
