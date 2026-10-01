@@ -570,10 +570,19 @@ file must be served with `Content-Disposition: inline` rather than
 
 ## Testing
 
-`demo.html` runs the viewer standalone with generated SVG assets — no network,
-no server. It includes a very tall image, a very wide one, a document-kind
-attachment, and a deliberately broken URL. Open it before wiring the viewer into
-a real page.
+`demo/index.html` runs the viewer against real files in `demo/assets/`: a very
+tall image, a very wide one, one with no dimensions supplied, PDFs, video, audio,
+a spreadsheet and a Word document. Two tiles are deliberate edge cases — a broken
+URL that should land on the fallback card, and a group of one that should hide
+the arrows and filmstrip. Open it before wiring the viewer into a real page.
+
+It loads `src/` directly, so there is no build step. Serve it rather than opening
+the file: over `file://` the spreadsheet and document previews stand down and
+show the file card with a message saying so.
+
+```bash
+npm run demo    # then open http://localhost:8000/demo/
+```
 
 ---
 
