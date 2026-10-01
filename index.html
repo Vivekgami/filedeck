@@ -87,6 +87,7 @@ a:hover { color: var(--accent); }
 
 @keyframes fdl-up    { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 @keyframes fdl-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes fdl-menu  { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 /* -- reveal on scroll ---------------------------------------------------- */
 [data-reveal] { transition: opacity 640ms var(--ease), transform 640ms var(--ease); }
@@ -110,8 +111,7 @@ a:hover { color: var(--accent); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 20px;
-  flex-wrap: wrap;
+  gap: 12px 20px;
   padding: clamp(10px, 1.4vw, 14px) clamp(12px, 2vw, 20px);
   border-bottom: 1px solid var(--hairline);
 }
@@ -137,10 +137,10 @@ a:hover { color: var(--accent); }
   font: 500 10.5px/1 var(--mono);
 }
 .fdl-nav-links {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
-  flex-wrap: wrap;
   font: 500 14.5px/1 var(--sans);
 }
 .fdl-nav-link {
@@ -151,7 +151,93 @@ a:hover { color: var(--accent); }
   transition: background 160ms ease, color 160ms ease;
 }
 .fdl-nav-link:hover { background: var(--hairline-2); color: var(--ink); }
-.fdl-nav-actions { display: flex; align-items: center; gap: 8px; }
+/* Logo and buttons split the leftover space evenly, so the links sit on the
+   true centre line of the page rather than wherever the gaps leave them. */
+.fdl-nav-brand { flex: 1 1 0; display: flex; }
+.fdl-nav-actions {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fdl-menu-btn {
+  position: relative;
+  flex: none;
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.fdl-menu-btn:hover { background: var(--hairline-2); }
+.fdl-menu-btn span {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: var(--ink);
+  transition: transform 220ms var(--ease);
+}
+.fdl-menu-btn span:first-child { top: 16px; }
+.fdl-menu-btn span:last-child  { top: 24px; }
+.fdl-menu-btn[aria-expanded="true"] span:first-child { transform: translateY(4px) rotate(45deg); }
+.fdl-menu-btn[aria-expanded="true"] span:last-child  { transform: translateY(-4px) rotate(-45deg); }
+
+.fdl-menu {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  gap: 2px;
+  padding: 6px clamp(6px, 1vw, 10px) 14px;
+  border-bottom: 1px solid var(--hairline);
+  animation: fdl-menu 220ms var(--ease) both;
+}
+/* An author display rule outranks the browser's own [hidden] rule. */
+.fdl-menu[hidden] { display: none; }
+.fdl-menu-link {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 clamp(6px, 1vw, 10px);
+  border-radius: 14px;
+  color: var(--ink);
+  text-decoration: none;
+  font: 500 16px/1.2 var(--sans);
+  transition: background 160ms ease;
+}
+.fdl-menu-link:hover { background: var(--hairline-2); color: var(--ink); }
+.fdl-menu-docs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  margin-top: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  text-decoration: none;
+  font: 500 15px/1 var(--sans);
+  transition: background 160ms ease;
+}
+.fdl-menu-docs:hover { background: var(--hairline-2); color: var(--ink); }
+
+/* Compact nav: under 900px the section links and Docs move into the menu
+   panel, leaving the logo, a larger GitHub pill and the menu button. */
+@media (max-width: 899.98px) {
+  .fdl-nav-links, .fdl-nav-docs { display: none; }
+  .fdl-nav-actions .fdl-btn-solid { height: 44px; font-size: 15px; }
+  .fdl-menu-btn { display: block; }
+}
+@media (min-width: 900px) {
+  .fdl-menu { display: none !important; }
+}
 
 /* -- buttons ------------------------------------------------------------- */
 .fdl-btn {
@@ -591,10 +677,12 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
 <div class="fdl-panel">
 
   <nav class="fdl-nav">
-    <a class="fdl-logo" href="#top">
-      <span class="fdl-logo-mark">fd</span>
-      Filedeck
-    </a>
+    <div class="fdl-nav-brand">
+      <a class="fdl-logo" href="#top">
+        <span class="fdl-logo-mark">fd</span>
+        Filedeck
+      </a>
+    </div>
     <div class="fdl-nav-links">
       <a class="fdl-nav-link" href="#demo">Try it</a>
       <a class="fdl-nav-link" href="#anchor">Markup</a>
@@ -603,10 +691,20 @@ code.fdl-inline-dark { font: 400 12.5px/1.4 var(--mono); color: var(--code-blue)
       <a class="fdl-nav-link" href="#install">Install</a>
     </div>
     <div class="fdl-nav-actions">
-      <a class="fdl-btn fdl-btn-sm fdl-btn-ghost" href="https://github.com/Vivekgami/filedeck#readme">Docs</a>
+      <a class="fdl-btn fdl-btn-sm fdl-btn-ghost fdl-nav-docs" href="https://github.com/Vivekgami/filedeck#readme">Docs</a>
       <a class="fdl-btn fdl-btn-sm fdl-btn-solid" href="https://github.com/Vivekgami/filedeck">GitHub</a>
+      <button class="fdl-menu-btn" type="button" aria-expanded="false" aria-controls="fdl-menu" aria-label="Open menu"><span></span><span></span></button>
     </div>
   </nav>
+
+  <div class="fdl-menu" id="fdl-menu" hidden>
+    <a class="fdl-menu-link" href="#demo">Try it</a>
+    <a class="fdl-menu-link" href="#anchor">Markup</a>
+    <a class="fdl-menu-link" href="#formats">Formats</a>
+    <a class="fdl-menu-link" href="#controls">Controls</a>
+    <a class="fdl-menu-link" href="#install">Install</a>
+    <a class="fdl-menu-docs" href="https://github.com/Vivekgami/filedeck#readme">Docs</a>
+  </div>
 
   <section class="fdl-hero" id="top">
     <div class="fdl-arcs" aria-hidden="true">
@@ -970,8 +1068,9 @@ new Filedeck();</code></pre>
 <script src="src/filedeck.js"></script>
 <script>
 /* --------------------------------------------------------------------------
-   Page chrome: scroll reveals, the three copy buttons, and one call to start
-   the lightbox. The tiles themselves are markup — Filedeck reads them on click.
+   Page chrome: the compact-nav menu, scroll reveals, the three copy buttons,
+   and one call to start the lightbox. The tiles themselves are markup —
+   Filedeck reads them on click.
    -------------------------------------------------------------------------- */
 
 /* -- the lightbox --------------------------------------------------------- */
@@ -1022,6 +1121,29 @@ document.querySelectorAll('.fdl-face img').forEach((img) => {
     label.textContent = badge ? badge.textContent : '';
     img.replaceWith(label);
   });
+});
+
+/* -- compact nav ---------------------------------------------------------- */
+/* Under 900px the CSS swaps the section links for a menu button; this opens
+   and closes the panel it controls. */
+const menuBtn = document.querySelector('.fdl-menu-btn');
+const menu = document.getElementById('fdl-menu');
+
+function setMenu(open) {
+  menu.hidden = !open;
+  menuBtn.setAttribute('aria-expanded', String(open));
+  menuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+}
+menuBtn.addEventListener('click', () => setMenu(menu.hidden));
+menu.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || menu.hidden) return;
+  const hadFocus = menu.contains(document.activeElement);
+  setMenu(false);
+  if (hadFocus) menuBtn.focus();
+});
+window.matchMedia('(min-width: 900px)').addEventListener('change', (e) => {
+  if (e.matches) setMenu(false);
 });
 
 /* -- copy buttons --------------------------------------------------------- */
