@@ -434,7 +434,12 @@ a:hover { color: var(--accent); }
 }
 
 /* -- demo grid ----------------------------------------------------------- */
-.fdl-tiles { grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr)); }
+/* The script at the bottom picks a column count that leaves no ragged last
+   row; this auto-fill is what runs without it. */
+.fdl-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr));
+  justify-content: center;
+}
 .fdl-tile {
   display: flex;
   flex-direction: column;
@@ -1068,9 +1073,9 @@ new Filedeck();</code></pre>
 <script src="src/filedeck.js"></script>
 <script>
 /* --------------------------------------------------------------------------
-   Page chrome: the compact-nav menu, scroll reveals, the three copy buttons,
-   and one call to start the lightbox. The tiles themselves are markup —
-   Filedeck reads them on click.
+   Page chrome: the compact-nav menu, demo-grid columns, scroll reveals, the
+   three copy buttons, and one call to start the lightbox. The tiles
+   themselves are markup — Filedeck reads them on click.
    -------------------------------------------------------------------------- */
 
 /* -- the lightbox --------------------------------------------------------- */
@@ -1145,6 +1150,46 @@ document.addEventListener('keydown', (e) => {
 window.matchMedia('(min-width: 900px)').addEventListener('change', (e) => {
   if (e.matches) setMenu(false);
 });
+
+/* -- demo grid columns ---------------------------------------------------- */
+/* As many columns as fit, stepped down to a count that divides the tile
+   total so the last row is never ragged: 2 on phones, 3–4 on tablets, 6 on
+   laptops, all twelve in one row once the grid passes ~2150px. */
+const demoGrid = document.querySelector('.fdl-tiles');
+const demoCount = demoGrid.querySelectorAll('.fdl-tile').length;
+
+function demoColumns(n, width) {
+  const gap = 12;
+  const min = width < 560 ? 140 : 168;
+  const max = Math.max(1, Math.floor((width + gap) / (min + gap)));
+  if (!n) return max;
+  if (n <= max) return n;
+  let best = max;
+  let bestEmpty = Infinity;
+  for (let c = max; c >= Math.max(2, Math.ceil(max / 2)); c--) {
+    const empty = (c - (n % c)) % c;
+    if (empty < bestEmpty) { best = c; bestEmpty = empty; }
+    if (!empty) break;
+  }
+  return best;
+}
+
+let demoFrame = 0;
+function layoutDemo() {
+  cancelAnimationFrame(demoFrame);
+  demoFrame = requestAnimationFrame(() => {
+    const width = demoGrid.clientWidth;
+    if (!width) return;
+    const cols = demoColumns(demoCount, width);
+    const tile = (width - (cols - 1) * 12) / cols;
+    // A short deck sitting in a single row stops growing at 360px a tile.
+    demoGrid.style.gridTemplateColumns =
+      'repeat(' + cols + ', minmax(0, ' + (tile > 360 ? '360px' : '1fr') + '))';
+  });
+}
+if (window.ResizeObserver) new ResizeObserver(layoutDemo).observe(demoGrid);
+window.addEventListener('resize', layoutDemo);
+layoutDemo();
 
 /* -- copy buttons --------------------------------------------------------- */
 document.querySelectorAll('[data-copy]').forEach((btn) => {
