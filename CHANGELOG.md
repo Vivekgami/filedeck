@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-10-04
 
 - Word previews for `.docx` and `.docm`: headings, inline formatting, nested
   lists, tables, embedded images, quotes, alignment and external links
@@ -15,7 +15,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   failure path lands on the file card with its own message, including a
   specific one for pages opened over `file://`
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-09-16
 
 First release.
 

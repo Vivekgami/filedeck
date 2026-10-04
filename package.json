@@ -1,7 +1,7 @@
 {
   "name": "filedeck",
-  "version": "0.1.0",
-  "description": "A dependency-free attachment viewer for images, PDFs, video, audio and documents. Driven by DOM attributes, no build step required.",
+  "version": "0.2.0",
+  "description": "A dependency-free attachment viewer for images, PDFs, video, audio, Excel and Word files. Driven by DOM attributes, no build step required.",
   "keywords": [
     "lightbox",
     "attachment",
@@ -10,7 +10,17 @@
     "pdf",
     "file-preview",
     "vanilla-js",
-    "no-dependencies"
+    "no-dependencies",
+    "xlsx",
+    "docx",
+    "excel",
+    "word",
+    "spreadsheet-viewer",
+    "document-viewer",
+    "image-viewer",
+    "pdf-viewer",
+    "pinch-zoom",
+    "modal"
   ],
   "license": "MIT",
   "author": "Vivek V Gami",
