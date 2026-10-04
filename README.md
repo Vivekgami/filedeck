@@ -15,8 +15,8 @@ Add one attribute to the links you already have, and they become a viewer.
 **CDN — no build step, no npm:**
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/filedeck@0.1/dist/filedeck.min.css">
-<script src="https://cdn.jsdelivr.net/npm/filedeck@0.1/dist/filedeck.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/filedeck@0.2/dist/filedeck.min.css">
+<script src="https://cdn.jsdelivr.net/npm/filedeck@0.2/dist/filedeck.umd.min.js"></script>
 <script>window.filedeck = new Filedeck();</script>
 ```
 
